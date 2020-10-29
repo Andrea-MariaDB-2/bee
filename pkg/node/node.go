@@ -691,7 +691,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		// API server
 		feedFactory := factory.New(ns)
 		steward := steward.New(storer, traversalService, pushSyncProtocol)
-		apiService = api.New(tagService, ns, multiResolver, pssService, traversalService, pinningService, feedFactory, post, postageContractService, steward, signer, logger, tracer, api.Options{
+		apiService = api.New(tagService, ns, pushSyncProtocol, multiResolver, pssService, traversalService, pinningService, feedFactory, post, postageContractService, steward, signer, logger, tracer, api.Options{
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			GatewayMode:        o.GatewayMode,
 			WsPingPeriod:       60 * time.Second,

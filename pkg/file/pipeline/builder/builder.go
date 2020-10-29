@@ -15,17 +15,42 @@ import (
 	enc "github.com/ethersphere/bee/pkg/file/pipeline/encryption"
 	"github.com/ethersphere/bee/pkg/file/pipeline/feeder"
 	"github.com/ethersphere/bee/pkg/file/pipeline/hashtrie"
+	"github.com/ethersphere/bee/pkg/file/pipeline/push"
 	"github.com/ethersphere/bee/pkg/file/pipeline/store"
+	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // NewPipelineBuilder returns the appropriate pipeline according to the specified parameters
-func NewPipelineBuilder(ctx context.Context, s storage.Putter, mode storage.ModePut, encrypt bool) pipeline.Interface {
+func NewPipelineBuilder(ctx context.Context, s storage.Putter, p pushsync.PushSyncer, mode storage.ModePut, encrypt bool) pipeline.Interface {
 	if encrypt {
 		return newEncryptionPipeline(ctx, s, mode)
 	}
+	if p != nil {
+		return newPushingPipeline(ctx, p, mode)
+	}
 	return newPipeline(ctx, s, mode)
+}
+
+// newPushingPipeline creates a pipeline that only hashes content with BMT to create
+// a merkle-tree of hashes that represent the given arbitrary size byte stream. Partial
+// writes are supported. All chunks are directly synced to the network after hashing.
+// The pipeline flow is: Data -> Feeder -> BMT -> PushStore -> HashTrie.
+func newPushingPipeline(ctx context.Context, p pushsync.PushSyncer, mode storage.ModePut) pipeline.Interface {
+	tw := hashtrie.NewHashTrieWriter(swarm.ChunkSize, swarm.Branches, swarm.HashSize, newShortPushingPipelineFunc(ctx, p, mode))
+	lsw := push.NewPushSyncWriter(ctx, p, tw)
+	b := bmt.NewBmtWriter(lsw)
+	return feeder.NewChunkFeederWriter(swarm.ChunkSize, b)
+}
+
+// newShortPushingPipelineFunc returns a constructor function for an ephemeral hashing pipeline
+// needed by the hashTrieWriter.
+func newShortPushingPipelineFunc(ctx context.Context, p pushsync.PushSyncer, mode storage.ModePut) func() pipeline.ChainWriter {
+	return func() pipeline.ChainWriter {
+		lsw := push.NewPushSyncWriter(ctx, p, nil)
+		return bmt.NewBmtWriter(lsw)
+	}
 }
 
 // newPipeline creates a standard pipeline that only hashes content with BMT to create
