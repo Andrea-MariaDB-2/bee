@@ -49,6 +49,7 @@ const (
 	SwarmFeedIndexNextHeader  = "Swarm-Feed-Index-Next"
 	SwarmCollectionHeader     = "Swarm-Collection"
 	SwarmPostageBatchIdHeader = "Swarm-Postage-Batch-Id"
+	SwarmRealtimeUploadHeader = "Swarm-Realtime-Upload"
 )
 
 // The size of buffer used for prefetching content with Langos.
