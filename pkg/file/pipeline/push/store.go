@@ -7,10 +7,13 @@ package push
 import (
 	"context"
 	"errors"
+	"sync"
 
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/pushsync"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -21,9 +24,11 @@ const concurrentPushes = 10
 type pushWriter struct {
 	ctx  context.Context
 	next pipeline.ChainWriter
+	ls   storage.Putter
 	p    pushsync.PushSyncer
 
 	sem chan struct{}
+	wg  sync.WaitGroup // errgroup.Group
 	eg  errgroup.Group
 }
 
@@ -56,9 +61,18 @@ func (w *pushWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
 		select {
 		case <-w.ctx.Done():
 			return
+		default:
 		}
 		_, err = w.p.PushChunkToClosest(w.ctx, c)
 		if err != nil {
+			if errors.Is(err, topology.ErrWantSelf) {
+				// if we are the closest, pushsync has already taken care
+				// of replication, and we should put the chunk as ModePutSync
+				_, err = w.ls.Put(w.ctx, storage.ModePutSync, c)
+				if err != nil {
+
+				}
+			}
 			goto PUSH
 		}
 
@@ -71,6 +85,11 @@ func (w *pushWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
 		// hash to the caller before all intermediate chunks have been written
 		// to the network.
 		w.wg.Wait()
+		select {
+		case <-w.ctx.Done():
+			return w.ctx.Err()
+		default:
+		}
 		return nil
 	}
 
