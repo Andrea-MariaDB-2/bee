@@ -7,7 +7,6 @@ package push
 import (
 	"context"
 	"errors"
-	"sync"
 
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/pushsync"
@@ -28,7 +27,6 @@ type pushWriter struct {
 	p    pushsync.PushSyncer
 
 	sem chan struct{}
-	wg  sync.WaitGroup // errgroup.Group
 	eg  errgroup.Group
 }
 
@@ -49,18 +47,17 @@ func (w *pushWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
 	}
 	var err error
 	c := swarm.NewChunk(swarm.NewAddress(p.Ref), p.Data)
-	<-w.sem
-
-	go func(c swarm.Chunk) {
+	/// TODO add stamp ^^
+	w.sem <- struct{}{}
+	w.eg.Go(func() error {
 		defer func() {
-			w.sem <- struct{}{}
-			w.wg.Done()
+			<-w.sem
 		}()
 
 	PUSH:
 		select {
 		case <-w.ctx.Done():
-			return
+			return w.ctx.Err()
 		default:
 		}
 		_, err = w.p.PushChunkToClosest(w.ctx, c)
@@ -73,10 +70,12 @@ func (w *pushWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
 
 				}
 			}
+			// if the error is different, we keep on trying, hopefully
+			// it gets through eventually
 			goto PUSH
 		}
-
-	}(c)
+		return nil
+	})
 
 	// this is here because the short pipeline used by the hashtrie writer
 	// does not have a next writer to write to.
@@ -84,11 +83,8 @@ func (w *pushWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
 		// this assures that the hashtrie writer will not return the
 		// hash to the caller before all intermediate chunks have been written
 		// to the network.
-		w.wg.Wait()
-		select {
-		case <-w.ctx.Done():
-			return w.ctx.Err()
-		default:
+		if err := w.eg.Wait(); err != nil {
+			return err
 		}
 		return nil
 	}
@@ -97,6 +93,9 @@ func (w *pushWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
 }
 
 func (w *pushWriter) Sum() ([]byte, error) {
-	w.wg.Wait()
+	err := w.eg.Wait()
+	if err != nil {
+		return nil, err
+	}
 	return w.next.Sum()
 }

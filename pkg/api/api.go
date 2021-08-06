@@ -372,7 +372,7 @@ type pipelineFunc func(context.Context, io.Reader) (swarm.Address, error)
 func requestPipelineFn(s storage.Putter, r *http.Request) pipelineFunc {
 	mode, encrypt := requestModePut(r), requestEncrypt(r)
 	return func(ctx context.Context, r io.Reader) (swarm.Address, error) {
-		pipe := builder.NewPipelineBuilder(ctx, s, mode, encrypt)
+		pipe := builder.NewPipelineBuilder(ctx, s, nil, mode, encrypt)
 		return builder.FeedPipeline(ctx, pipe, r)
 	}
 }

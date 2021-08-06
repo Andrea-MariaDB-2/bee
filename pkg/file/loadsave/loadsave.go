@@ -50,7 +50,7 @@ func (ls *loadSave) Load(ctx context.Context, ref []byte) ([]byte, error) {
 }
 
 func (ls *loadSave) Save(ctx context.Context, data []byte) ([]byte, error) {
-	pipe := builder.NewPipelineBuilder(ctx, ls.storer, ls.mode, ls.encrypted)
+	pipe := builder.NewPipelineBuilder(ctx, ls.storer, nil, ls.mode, ls.encrypted)
 	address, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
 	if err != nil {
 		return swarm.ZeroAddress.Bytes(), err
